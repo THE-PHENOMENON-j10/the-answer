@@ -5,6 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth'); // <-- NEW: Word Document reader
 const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -40,6 +41,7 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
         }
 
         let combinedText = "";
+        const imageParts = []; // <-- NEW: Array to hold images for Gemini's eyes
 
         // 3. Extract text from uploaded files
         for (const file of req.files) {
@@ -51,7 +53,24 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
                 } catch (pdfErr) {
                     console.error("Error reading PDF:", pdfErr);
                 }
+            } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                // Handle Word Documents (.docx)
+                try {
+                    const data = await mammoth.extractRawText({ buffer: file.buffer });
+                    combinedText += data.value + "\n";
+                } catch (err) {
+                    console.error("Error reading DOCX:", err);
+                }
+            } else if (mimeType.startsWith('image/')) {
+                // Handle Images (Let Gemini look at them directly)
+                imageParts.push({
+                    inlineData: {
+                        data: file.buffer.toString("base64"),
+                        mimeType: mimeType
+                    }
+                });
             } else {
+                // Handle standard text files (.txt, .csv, etc.)
                 combinedText += file.buffer.toString('utf-8') + "\n";
             }
         }
@@ -65,6 +84,16 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
             .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
             .replace(/\s+/g, ' ')
             .trim();
+
+        // --- REALITY CHECK LOG (THE SAFETY GUARDRAIL) ---
+        console.log("\n--- EXTRACTED SCROLL TEXT PREVIEW ---");
+        console.log(combinedText.substring(0, 500)); 
+        console.log(`[And ${imageParts.length} images sent to Vision Engine]`);
+        console.log("-------------------------------------\n");
+        
+        if (combinedText.length < 50) {
+            return res.status(400).json({ error: "The scrolls were empty or unreadable. Please try a different document." });
+        }
 
         // 4. DYNAMIC JSON Schema Enforcement based on Quiz Type
         const itemProperties = {
@@ -119,15 +148,24 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
         const prompt = `
         System: You are "THE ANSWER", an ancient, mystical source of infinite knowledge. 
         User: ${username} has provided scrolls of knowledge.
-        Task: Generate exactly ${numQuestions} ${type} questions based strictly on the text provided below. 
         
-        Formatting Constraint: ${formatInstruction}
-        CRITICAL JSON RULE: Do not use unescaped internal double quotes inside the text properties. If you need to include quotes or use titles, use single quotes (') instead. Do not generate literal line breaks inside the string fields.
+        Task: Generate exactly ${numQuestions} ${type} questions based STRICTLY AND ONLY on the Text Data provided below. 
+        
+        CRITICAL RULES:
+        1. ZERO OUTSIDE KNOWLEDGE: Every single question and answer MUST be directly extracted from the provided text. If the text is empty or you cannot find enough facts, do not make things up.
+        2. ${formatInstruction}
+        3. Do not use unescaped internal double quotes inside the text properties. Use single quotes (') instead. Do not generate literal line breaks.
         
         Include a short, mystic welcome for ${username} from THE ANSWER in the 'phenomenon_welcome' field.
         `;
 
         console.log(">>> Communing with the Source (Gemini)...");
+        // NEW: We pass the prompt, the text, AND the array of images all at once!
+        const payload = [
+            prompt, 
+            `Text Data:\n${combinedText.substring(0, 100000)}`, 
+            ...imageParts
+        ];
 
         const result = await model.generateContent([prompt, `Text Data:\n${combinedText.substring(0, 100000)}`]);
         
