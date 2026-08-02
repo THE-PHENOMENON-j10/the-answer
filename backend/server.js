@@ -45,7 +45,8 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
         for (const file of req.files) {
             if (file.mimetype === 'application/pdf') {
                 try {
-                    const data = await pdfParse(file.buffer);
+                    const parsePDF = typeof pdfParse === 'function' ? pdfParse : pdfParse.default;
+                    const data = await parsePDF(file.buffer);
                     combinedText += data.text + "\n";
                 } catch (pdfErr) {
                     console.error("Error reading PDF:", pdfErr);
@@ -102,7 +103,7 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
 
         // 5. Initialize Model
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-3.5-flash", 
             generationConfig: { 
                 responseMimeType: "application/json",
                 responseSchema: quizSchema,

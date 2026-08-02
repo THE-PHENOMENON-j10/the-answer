@@ -87,7 +87,7 @@ export default function TheAnswerApp() {
     formData.append('type', config.type);
 
     try {
-      const res = await axios.post('http://localhost:5000/generate-quiz', formData);
+      const res = await axios.post('https://the-answer.onrender.com/generate-quiz', formData);
       setQuizData(res.data);
       setStep(3);
       // Kick off the timer using the exact user-selected duration
