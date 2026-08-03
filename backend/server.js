@@ -8,6 +8,8 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth'); // <-- NEW: Word Document reader
 const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fs = require('fs');      // <-- NEW: Allows server to read internal files
+const path = require('path');  // <-- NEW: Helps find the exact file location
 
 const app = express();
 
@@ -31,35 +33,63 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
     console.log(`>>> Received a request from seeker: ${req.body.username}`);
 
     try {
-        const { username, numQuestions, type } = req.body;
-
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: "No scrolls provided." });
-        }
-        if (req.files.length > 15) {
-            return res.status(400).json({ error: "THE ANSWER refuses to process more than 15 scrolls at once." });
-        }
+        // --- NEW: We extract 'mode' alongside the other variables ---
+        const { username, numQuestions, type, mode } = req.body;
 
         let combinedText = "";
-        const imageParts = []; // <-- NEW: Array to hold images for Gemini's eyes
+        const imageParts = []; 
 
-        // 3. Extract text from uploaded files
-        for (const file of req.files) {
-            const mimeType = file.mimetype; // <-- Declared here so all conditions can use it safely
+        // ==========================================
+        // THE FORK IN THE ROAD: GST212 vs CUSTOM
+        // ==========================================
+        if (mode === 'GST212') {
+            console.log(`>>> VIP Route Activated: Accessing GST212 Vault for ${username}`);
+            try {
+                // Read the hardcoded gst212.txt file from the backend folder
+                const filePath = path.join(__dirname, 'gst212.txt');
+                combinedText = fs.readFileSync(filePath, 'utf8');
+                
+                // Extra safety check in case the file is accidentally emptied
+                if (combinedText.length < 50) {
+                    return res.status(500).json({ error: "The GST212 vault appears to be empty on the server." });
+                }
+            } catch (err) {
+                console.error("Error reading GST212 file:", err);
+                return res.status(500).json({ error: "The GST212 vault is currently sealed. Contact the administrator." });
+            }
+            
+        } else {
+            // --- ORIGINAL CUSTOM QUEST LOGIC ---
+            console.log(`>>> Standard Route: Processing uploaded scrolls for ${username}`);
+            
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({ error: "No scrolls provided." });
+            }
+            if (req.files.length > 15) {
+                return res.status(400).json({ error: "THE ANSWER refuses to process more than 15 scrolls at once." });
+            }
 
-            if (mimeType === 'application/pdf') {
-                // Handle PDFs (Hybrid Digital + Scanned Detection)
-                try {
-                    const parsePDF = typeof pdfParse === 'function' ? pdfParse : pdfParse.default;
-                    const data = await parsePDF(file.buffer);
-                    const extractedText = data.text ? data.text.trim() : "";
+            // Extract text from uploaded files (Smart Sorter)
+            for (const file of req.files) {
+                const mimeType = file.mimetype; 
 
-                    // If pdf-parse found actual text, use it!
-                    if (extractedText.length >= 50) {
-                        combinedText += extractedText + "\n";
-                    } else {
-                        // SCANNED PDF DETECTED: Pass raw PDF directly to Gemini Vision
-                        console.log(`[PDF Scan Detected]: "${file.originalname}" has little/no text. Sending to Gemini Vision.`);
+                if (mimeType === 'application/pdf') {
+                    try {
+                        const parsePDF = typeof pdfParse === 'function' ? pdfParse : pdfParse.default;
+                        const data = await parsePDF(file.buffer);
+                        const extractedText = data.text ? data.text.trim() : "";
+
+                        if (extractedText.length >= 50) {
+                            combinedText += extractedText + "\n";
+                        } else {
+                            imageParts.push({
+                                inlineData: {
+                                    data: file.buffer.toString("base64"),
+                                    mimeType: 'application/pdf'
+                                }
+                            });
+                        }
+                    } catch (err) {
                         imageParts.push({
                             inlineData: {
                                 data: file.buffer.toString("base64"),
@@ -67,57 +97,44 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
                             }
                         });
                     }
-                } catch (err) {
-                    console.error("Error reading PDF, falling back to Gemini Vision:", err);
-                    // Fallback on corrupt/unreadable PDF: pass directly to Gemini
+                } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                    try {
+                        const data = await mammoth.extractRawText({ buffer: file.buffer });
+                        combinedText += data.value + "\n";
+                    } catch (err) {}
+                } else if (mimeType.startsWith('image/')) {
                     imageParts.push({
                         inlineData: {
                             data: file.buffer.toString("base64"),
-                            mimeType: 'application/pdf'
+                            mimeType: mimeType
                         }
                     });
+                } else {
+                    combinedText += file.buffer.toString('utf-8') + "\n";
                 }
-            } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-                // Handle Word Documents (.docx)
-                try {
-                    const data = await mammoth.extractRawText({ buffer: file.buffer });
-                    combinedText += data.value + "\n";
-                } catch (err) {
-                    console.error("Error reading DOCX:", err);
-                }
-            } else if (mimeType.startsWith('image/')) {
-                // Handle Images (Let Gemini look at them directly)
-                imageParts.push({
-                    inlineData: {
-                        data: file.buffer.toString("base64"),
-                        mimeType: mimeType
-                    }
-                });
-            } else {
-                // Handle standard text files (.txt, .csv, etc.)
-                combinedText += file.buffer.toString('utf-8') + "\n";
+            }
+
+            // --- THE ULTIMATE PURIFICATION (Only needed for messy custom uploads) ---
+            combinedText = combinedText
+                .replace(/"/g, "'")
+                .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            // Guardrail check for empty custom uploads
+            if (combinedText.length < 50 && imageParts.length === 0) {
+                return res.status(400).json({ error: "The scrolls were empty or unreadable. Please try a different document." });
             }
         }
-
-        // --- THE ULTIMATE PURIFICATION ---
-        // 1. Convert all double quotes to single quotes to protect JSON boundaries.
-        // 2. Erase hidden control characters (\u0000-\u001F) that cause JSON breaks.
-        // 3. Flatten out messy whitespace left over from PDF parsing.
-        combinedText = combinedText
-            .replace(/"/g, "'")
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // --- REALITY CHECK LOG (THE SAFETY GUARDRAIL) ---
-        console.log("\n--- EXTRACTED SCROLL TEXT PREVIEW ---");
-        console.log(combinedText.substring(0, 500)); 
-        console.log(`[And ${imageParts.length} images sent to Vision Engine]`);
-        console.log("-------------------------------------\n");
         
-        if (combinedText.length < 50 && imageParts.length === 0)  {
-            return res.status(400).json({ error: "The scrolls were empty or unreadable. Please try a different document." });
-        }
+        // --- REALITY CHECK LOG ---
+        console.log("\n--- EXTRACTED KNOWLEDGE PREVIEW ---");
+        console.log(`[Mode: ${mode || 'Custom'}]`);
+        console.log(combinedText.substring(0, 300) + "..."); 
+        console.log(`[And ${imageParts.length} files/images sent to Vision Engine]`);
+        console.log("-------------------------------------\n");
+
+        // 4. DYNAMIC JSON Schema Enforcement based on Quiz Type
 
         // 4. DYNAMIC JSON Schema Enforcement based on Quiz Type
         const itemProperties = {

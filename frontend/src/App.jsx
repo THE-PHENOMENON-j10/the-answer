@@ -6,6 +6,8 @@ export default function TheAnswerApp() {
   const [theme, setTheme] = useState('dark'); 
   const [step, setStep] = useState(1); 
   const [user, setUser] = useState('');
+  const [questMode, setQuestMode] = useState('Custom'); // Tracks 'Custom', 'GST212', or 'History'
+  const [menuOpen, setMenuOpen] = useState(false);      // Tracks if the hamburger menu is open
   const [files, setFiles] = useState([]);
   // Added 'duration' (in minutes) to the main config state
   const [config, setConfig] = useState({ count: 10, type: 'MCQ', duration: 10 });
@@ -76,40 +78,43 @@ export default function TheAnswerApp() {
   };
 
 const handleUpload = async (e) => {
-    // If triggered by a form submit, this prevents the page from reloading
     if (e) e.preventDefault(); 
 
-    // 1. Basic Checks
-    if (files.length === 0) return alert("Please select your files.");
-    if (files.length > 15) return alert("Maximum of 15 scrolls allowed.");
+    // --- 1. BOUNCER CHECKS (ONLY FOR CUSTOM QUESTS) ---
+    if (questMode === 'Custom') {
+      if (files.length === 0) return alert("Please select your scrolls.");
+      if (files.length > 15) return alert("Maximum of 15 scrolls allowed.");
 
-    // 2. --- THE FILE SIZE BOUNCER ---
-    let totalSize = 0;
-    for (let i = 0; i < files.length; i++) {
-      totalSize += files[i].size;
+      let totalSize = 0;
+      for (let i = 0; i < files.length; i++) {
+        totalSize += files[i].size;
+      }
+      
+      if (totalSize > 10485760) {
+        alert("These scrolls are too heavy! THE ANSWER can only process up to 10MB at a time.");
+        return; 
+      }
     }
-    
-    // 10MB limit (10,485,760 bytes)
-    if (totalSize > 10485760) {
-      alert("These scrolls are too heavy! THE ANSWER can only process up to 10MB at a time. Please compress your files or upload fewer pages.");
-      return; // Instantly stops the upload!
-    }
-    // ----------------------------------
 
-    // 3. Prepare the Data
+    // --- 2. PREPARE THE DATA ---
     setLoading(true);
     const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
+    
+    // Only attach files if we are on the Custom route
+    if (questMode === 'Custom') {
+      files.forEach(f => formData.append('files', f));
+    }
+    
     formData.append('username', user);
     formData.append('numQuestions', config.count);
     formData.append('type', config.type);
+    formData.append('mode', questMode); // <-- THE NEW SIGNAL FOR THE BACKEND
 
-    // 4. Send to Render
+    // --- 3. SEND TO RENDER ---
     try {
       const res = await axios.post('https://the-answer.onrender.com/generate-quiz', formData);
       setQuizData(res.data);
       setStep(3);
-      // Kick off the timer using the exact user-selected duration
       startTimer(config.duration);
     } catch (err) {
       console.error(err);
@@ -379,6 +384,30 @@ const handleUpload = async (e) => {
           </div>
         </div>
       )}
+      {/* --- THE HAMBURGER MENU --- */}
+      <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 100 }}>
+        <button 
+          onClick={() => setMenuOpen(!menuOpen)}
+          style={{ background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer' }}
+        >
+          ☰
+        </button>
+        
+        {menuOpen && (
+          <div className="glass-card" style={{ position: 'absolute', top: '50px', left: '0', width: '200px', display: 'flex', flexDirection: 'column', gap: '10px', padding: '15px' }}>
+            <button className="main-btn" onClick={() => { setQuestMode('Custom'); setMenuOpen(false); if(step !== 1 && step !== 2) setStep(2); }}>
+              Custom Quest
+            </button>
+            <button className="main-btn" onClick={() => { setQuestMode('GST212'); setMenuOpen(false); if(step !== 1 && step !== 2) setStep(2); }} style={{ background: 'linear-gradient(45deg, #ffd700, #ff8c00)', color: 'black' }}>
+              Course: GST212
+            </button>
+            <button className="main-btn" onClick={() => { setQuestMode('History'); setMenuOpen(false); }} style={{ background: 'transparent', border: '1px solid white' }}>
+              Quest History
+            </button>
+          </div>
+        )}
+      </div>
+      {/* --------------------------- */}
 
       {step === 1 && (
         <div className="glass-card">
@@ -395,13 +424,25 @@ const handleUpload = async (e) => {
         </div>
       )}
 
-      {step === 2 && (
+      {step === 2 && questMode !== 'History' && (
         <div className="glass-card">
-          <h2 className="mystic-title" style={{fontSize: '1.5rem'}}>WELCOME, {user.toUpperCase()}</h2>
-          <div className="pro-input-group">
-            <span className="input-label">1. Knowledge Scrolls</span>
-            <input type="file" multiple onChange={handleFileSelection} />
-          </div>
+          <h2 className="mystic-title" style={{fontSize: '1.5rem'}}>
+            {questMode === 'GST212' ? 'GST212 FAST-TRACK' : `WELCOME, ${user.toUpperCase()}`}
+          </h2>
+          
+          {/* ONLY SHOW FILE UPLOAD IF IN CUSTOM MODE */}
+          {questMode === 'Custom' && (
+            <div className="pro-input-group">
+              <span className="input-label">1. Knowledge Scrolls</span>
+              <p style={{ fontSize: '0.85rem', opacity: 0.7, margin: '5px 0 10px 0', fontStyle: 'italic' }}>
+                * Note: The combined weight of all scrolls must not exceed 10MB.
+              </p>
+              <input type="file" multiple onChange={handleFileSelection} />
+            </div>
+          )}
+
+          {/* ... Your existing 3-column grid for Intensity, Format, and Duration stays exactly the same here ... */}
+          
           {/* Changed layout grid to 3 columns to handle the new selection elegantly */}
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px'}}>
              <div className="pro-input-group" style={{padding: '15px'}}>
