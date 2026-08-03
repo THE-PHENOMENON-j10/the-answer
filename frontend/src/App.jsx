@@ -7,9 +7,7 @@ export default function TheAnswerApp() {
   const [step, setStep] = useState(1); 
   const [user, setUser] = useState('');
   const [questMode, setQuestMode] = useState('Custom'); // Tracks 'Custom', 'GST212', or 'History'
-  const [menuOpen, setMenuOpen] = useState(false);      // Tracks if the hamburger menu is open
   const [files, setFiles] = useState([]);
-  // Added 'duration' (in minutes) to the main config state
   const [config, setConfig] = useState({ count: 10, type: 'MCQ', duration: 10 });
   const [quizData, setQuizData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -19,8 +17,11 @@ export default function TheAnswerApp() {
   const [score, setScore] = useState(0);
 
   const [history, setHistory] = useState([]);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
+  
+  // FIXED: Declared missing states that were used in the UI
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [selectedReview, setSelectedReview] = useState(null);
   
   const timerRef = useRef(null);
 
@@ -55,7 +56,6 @@ export default function TheAnswerApp() {
     }
   };
 
-  // Updated to use the selected user duration instead of calculating by question count
   const startTimer = (minutes) => {
     const seconds = minutes * 60;
     setTimeLeft(seconds);
@@ -77,10 +77,9 @@ export default function TheAnswerApp() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-const handleUpload = async (e) => {
+  const handleUpload = async (e) => {
     if (e) e.preventDefault(); 
 
-    // --- 1. BOUNCER CHECKS (ONLY FOR CUSTOM QUESTS) ---
     if (questMode === 'Custom') {
       if (files.length === 0) return alert("Please select your scrolls.");
       if (files.length > 15) return alert("Maximum of 15 scrolls allowed.");
@@ -96,11 +95,9 @@ const handleUpload = async (e) => {
       }
     }
 
-    // --- 2. PREPARE THE DATA ---
     setLoading(true);
     const formData = new FormData();
     
-    // Only attach files if we are on the Custom route
     if (questMode === 'Custom') {
       files.forEach(f => formData.append('files', f));
     }
@@ -108,9 +105,8 @@ const handleUpload = async (e) => {
     formData.append('username', user);
     formData.append('numQuestions', config.count);
     formData.append('type', config.type);
-    formData.append('mode', questMode); // <-- THE NEW SIGNAL FOR THE BACKEND
+    formData.append('mode', questMode);
 
-    // --- 3. SEND TO RENDER ---
     try {
       const res = await axios.post('https://the-answer.onrender.com/generate-quiz', formData);
       setQuizData(res.data);
@@ -150,12 +146,14 @@ const handleUpload = async (e) => {
       score: calculatedScore,
       totalQuestions: quizData?.quiz?.length || 0,
       quiz: quizData.quiz,
-      userAnswers: userAnswers
+      userAnswers: userAnswers,
+      mode: questMode
     };
 
     const updatedHistory = [newSession, ...history];
     setHistory(updatedHistory);
     localStorage.setItem('the_answer_history', JSON.stringify(updatedHistory));
+    localStorage.setItem('quest_history', JSON.stringify(updatedHistory)); // Sync with archive mode fallback
 
     confetti({ particleCount: 200, spread: 80 });
     setStep(4);
@@ -338,11 +336,19 @@ const handleUpload = async (e) => {
         <button className="menu-close-btn" onClick={() => setIsMenuOpen(false)}>✕</button>
         <h3 className="mystic-title" style={{fontSize: '1.2rem', marginTop: '10px', marginBottom: '30px'}}>QUEST HISTORY</h3>
         
+        <button 
+          className="main-btn" 
+          style={{ width: '100%', padding: '10px', marginBottom: '15px', fontSize: '0.85rem' }}
+          onClick={() => { setQuestMode('History'); setIsMenuOpen(false); }}
+        >
+          📂 View Archives Panel
+        </button>
+
         {history.length === 0 ? (
           <p style={{opacity: 0.5, fontStyle: 'italic'}}>No past answers documented yet.</p>
         ) : (
           history.map((session) => (
-            <div key={session.id} className="history-item" onClick={() => setSelectedSession(session)}>
+            <div key={session.id} className="history-item" onClick={() => { setSelectedSession(session); setIsMenuOpen(false); }}>
               <div style={{fontWeight: 'bold', color: '#7000ff'}}>{session.score} / {session.totalQuestions}</div>
               <div style={{fontSize: '0.8rem', opacity: 0.6, marginTop: '5px'}}>{session.date}</div>
             </div>
@@ -350,6 +356,7 @@ const handleUpload = async (e) => {
         )}
       </div>
 
+      {/* --- SIDE MENU POPUP REVIEW MODAL --- */}
       {selectedSession && (
         <div className="modal-overlay" onClick={() => setSelectedSession(null)}>
           <div className="glass-card" style={{maxWidth: '700px', maxHeight: '80%', overflowY: 'auto', textAlign: 'left'}} onClick={e => e.stopPropagation()}>
@@ -360,23 +367,17 @@ const handleUpload = async (e) => {
             <p style={{opacity: 0.7, fontSize: '0.9rem', marginBottom: '20px'}}>Achieved standard: <strong>{selectedSession.score} / {selectedSession.totalQuestions}</strong> on {selectedSession.date}</p>
             <hr style={{borderColor: 'rgba(120, 120, 120, 0.2)', marginBottom: '20px'}} />
             
-            <div>
-              {selectedSession.quiz.map((q, i) => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {selectedSession.quiz && selectedSession.quiz.map((q, i) => {
                 const picked = selectedSession.userAnswers[i];
                 const correct = q.answer;
                 const isCorrect = picked === correct;
 
                 return (
-                  <div key={i} style={{marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(120,120,120,0.1)'}}>
-                    <p style={{fontWeight: 'bold', margin: '0 0 10px 0'}}>{i + 1}. {q.question}</p>
-                    <div style={{fontSize: '0.9rem'}}>
-                      <div style={{color: isCorrect ? '#00c853' : '#ff3d00', marginBottom: '4px'}}>
-                        <strong>Picked Answer:</strong> {picked || <span style={{opacity: 0.5}}>[No choice made]</span>}
-                      </div>
-                      <div style={{color: '#00c853'}}>
-                        <strong>Correct Answer:</strong> {correct}
-                      </div>
-                    </div>
+                  <div key={i} style={{ background: 'rgba(120,120,120,0.05)', padding: '15px', borderRadius: '12px', borderLeft: `4px solid ${isCorrect ? '#00ffcc' : '#ff4d4d'}` }}>
+                    <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>{i + 1}. {q.question}</p>
+                    <p style={{ fontSize: '0.9rem', margin: '3px 0' }}>Your choice: <span style={{ color: isCorrect ? '#00ffcc' : '#ff4d4d', fontWeight: 'bold' }}>{picked || "Unanswered"}</span></p>
+                    {!isCorrect && <p style={{ fontSize: '0.9rem', margin: '3px 0', color: '#00ffcc' }}>Correct: {correct}</p>}
                   </div>
                 );
               })}
@@ -384,32 +385,34 @@ const handleUpload = async (e) => {
           </div>
         </div>
       )}
-      {/* --- THE HAMBURGER MENU --- */}
-      <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 100 }}>
-        <button 
-          onClick={() => setMenuOpen(!menuOpen)}
-          style={{ background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer', padding: 0, lineHeight: 1 }}
-        >
-          <span style={{ display: 'block', transform: 'translateY(-2px)' }}>☰</span>
-        </button>
-        
-        {menuOpen && (
-          <div className="glass-card" style={{ position: 'absolute', top: '50px', left: '0', width: '200px', display: 'flex', flexDirection: 'column', gap: '10px', padding: '15px' }}>
-            <button className="main-btn" onClick={() => { setQuestMode('Custom'); setMenuOpen(false); if(step !== 1 && step !== 2) setStep(2); }}>
-              Custom Quest
-            </button>
-            <button className="main-btn" onClick={() => { setQuestMode('GST212'); setMenuOpen(false); if(step !== 1 && step !== 2) setStep(2); }} style={{ background: 'linear-gradient(45deg, #ffd700, #ff8c00)', color: 'black' }}>
-              Course: GST212
-            </button>
-            <button className="main-btn" onClick={() => { setQuestMode('History'); setMenuOpen(false); }} style={{ background: 'transparent', border: '1px solid white' }}>
-              Quest History
-            </button>
-          </div>
-        )}
-      </div>
-      {/* --------------------------- */}
 
-      {step === 1 && (
+      {/* --- TOP RIGHT CONTROLS FOR ACTIVE WORKSPACE --- */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', alignItems: 'center', gap: '15px', zIndex: 100 }}>
+        <button 
+          className="main-btn"
+          onClick={() => {
+            if (questMode === 'History') {
+              setQuestMode('Custom');
+            } else {
+              setQuestMode(questMode === 'Custom' ? 'GST212' : 'Custom');
+            }
+          }}
+          style={{
+            background: questMode === 'GST212' ? 'linear-gradient(45deg, #ffd700, #ff8c00)' : 'rgba(255,255,255,0.1)',
+            color: questMode === 'GST212' ? 'black' : 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            padding: '8px 15px',
+            borderRadius: '20px'
+          }}
+        >
+          {questMode === 'GST212' ? '🎓 GST212 ACTIVE' : questMode === 'History' ? '📁 RETURN TO SETUP' : '📁 SWITCH TO GST212'}
+        </button>
+      </div>
+
+      {/* --- WORKSPACE STEPS --- */}
+      {questMode !== 'History' && step === 1 && (
         <div className="glass-card">
           <h1 className="mystic-title">THE ANSWER</h1>
           <p style={{opacity: 0.7, marginBottom: '30px'}}>Identify yourself to begin.</p>
@@ -424,14 +427,13 @@ const handleUpload = async (e) => {
         </div>
       )}
 
-      {step === 2 && questMode !== 'History' && (
+      {questMode !== 'History' && step === 2 && (
         <div className="glass-card">
           <h2 className="mystic-title" style={{fontSize: '1.5rem'}}>
             {questMode === 'GST212' ? 'GST212 FAST-TRACK' : `WELCOME, ${user.toUpperCase()}`}
           </h2>
           
-          {/* ONLY SHOW FILE UPLOAD IF IN CUSTOM MODE */}
-          {questMode === 'Custom' && (
+          {questMode === 'Custom' ? (
             <div className="pro-input-group">
               <span className="input-label">1. Knowledge Scrolls</span>
               <p style={{ fontSize: '0.85rem', opacity: 0.7, margin: '5px 0 10px 0', fontStyle: 'italic' }}>
@@ -439,9 +441,14 @@ const handleUpload = async (e) => {
               </p>
               <input type="file" multiple onChange={handleFileSelection} />
             </div>
+          ) : (
+            <div style={{ padding: '15px', margin: '15px 0', borderRadius: '8px', background: 'rgba(255, 215, 0, 0.05)', border: '1px solid rgba(255, 215, 0, 0.2)', textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#ffd700' }}>
+                ✨ The internal GST212 Knowledge Vault has been unlocked. No scrolls required.
+              </p>
+            </div>
           )}
 
-          {/* Changed layout grid to 3 columns to handle the new selection elegantly */}
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px'}}>
              <div className="pro-input-group" style={{padding: '15px'}}>
                <span className="input-label">2. Intensity</span>
@@ -459,7 +466,6 @@ const handleUpload = async (e) => {
                  <option value="Theory">Theory</option>
                </select>
              </div>
-             {/* New Duration Selection Field */}
              <div className="pro-input-group" style={{padding: '15px'}}>
                <span className="input-label">4. Duration</span>
                <select className="pro-select" value={config.duration} onChange={e => setConfig({...config, duration: parseInt(e.target.value)})}>
@@ -478,12 +484,9 @@ const handleUpload = async (e) => {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* 👇 NEW QUEST HISTORY & REVIEW UI BLOCK 👇 */}
-      {/* ========================================== */}
+      {/* --- INLINE FULL SCREEN ARCHIVES WINDOW --- */}
       {questMode === 'History' && (
         <div className="glass-card" style={{ marginTop: '60px', maxHeight: '80vh', overflowY: 'auto' }}>
-          
           {selectedReview ? (
             <div>
               <button 
@@ -493,12 +496,11 @@ const handleUpload = async (e) => {
                 ← Back to Archives
               </button>
               <h2 className="mystic-title" style={{ fontSize: '1.2rem' }}>
-                REVIEW: {selectedReview.mode === 'GST212' ? 'GST212' : 'CUSTOM QUEST'} ({selectedReview.score}%)
+                REVIEW: {selectedReview.mode === 'GST212' ? 'GST212' : 'CUSTOM QUEST'} ({selectedReview.score} Points)
               </h2>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px', textAlign: 'left' }}>
-                {selectedReview.quizData.map((q, index) => {
-                  // Fixed: Matched to use your specific index-based answer storage
+                {selectedReview.quiz && selectedReview.quiz.map((q, index) => {
                   const userPicked = selectedReview.userAnswers[index];
                   const isCorrect = userPicked === q.answer;
 
@@ -528,9 +530,9 @@ const handleUpload = async (e) => {
             <div>
               <h2 className="mystic-title" style={{ fontSize: '1.5rem' }}>ARCHIVE OF COMPLETED QUESTS</h2>
               {(() => {
-                const history = JSON.parse(localStorage.getItem('quest_history')) || [];
+                const storedHistory = JSON.parse(localStorage.getItem('the_answer_history')) || [];
                 
-                if (history.length === 0) {
+                if (storedHistory.length === 0) {
                   return (
                     <p style={{ textAlign: 'center', opacity: 0.7, fontStyle: 'italic', padding: '20px' }}>
                       No past trials found in your local scrolls yet...
@@ -540,11 +542,11 @@ const handleUpload = async (e) => {
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {history.map((item) => (
+                    {storedHistory.map((item) => (
                       <div 
                         key={item.id} 
                         onClick={() => setSelectedReview(item)}
-                        style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', cursor: 'pointer', transition: '0.2s' }}
+                        style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '12px', borderRadius: '8px', display: 'flex', justifycontent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', cursor: 'pointer', transition: '0.2s' }}
                         onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                         onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                       >
@@ -555,7 +557,7 @@ const handleUpload = async (e) => {
                           <div style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '4px' }}>{item.date}</div>
                         </div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00ffcc' }}>
-                          {item.score}%
+                          {item.score} / {item.totalQuestions}
                         </div>
                       </div>
                     ))}
@@ -565,7 +567,10 @@ const handleUpload = async (e) => {
                       style={{ background: 'rgba(255, 77, 77, 0.2)', border: '1px solid #ff4d4d', color: '#ff4d4d', marginTop: '10px' }}
                       onClick={() => {
                         if(window.confirm("Are you sure you want to wipe all records from your local scrolls?")) {
+                          localStorage.removeItem('the_answer_history');
                           localStorage.removeItem('quest_history');
+                          setHistory([]);
+                          setQuestMode('Custom');
                           setStep(2); 
                         }
                       }}
@@ -579,11 +584,10 @@ const handleUpload = async (e) => {
           )}
         </div>
       )}
-      {/* ========================================== */}
 
-      {step === 3 && quizData && (
+      {questMode !== 'History' && step === 3 && quizData && (
         <div className="glass-card" style={{maxWidth: '800px'}}>
-           <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '20px'}}>
+           <div style={{display: 'flex', justifycontent: 'space-between', marginBottom: '20px'}}>
               <span style={{color: timeLeft < 60 ? '#ff4b4b' : '#7000ff', fontWeight: 'bold'}}>⏳ {formatTime(timeLeft)}</span>
               <span className="input-label">THE ANSWER</span>
            </div>
@@ -594,7 +598,7 @@ const handleUpload = async (e) => {
                   
                   {config.type === 'MCQ' ? (
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
-                      {q.options.map(o => (
+                      {q.options && q.options.map(o => (
                         <label key={o} style={{padding: '10px', background: 'rgba(120,120,120,0.05)', borderRadius: '8px', cursor: 'pointer'}}>
                           <input 
                             type="radio" 
@@ -620,7 +624,7 @@ const handleUpload = async (e) => {
         </div>
       )}
 
-      {step === 4 && (
+      {questMode !== 'History' && step === 4 && (
         <div className="glass-card">
           <h1 className="mystic-title">COMPLETED</h1>
           <div style={{padding: '30px', background: 'rgba(112,0,255,0.05)', borderRadius: '20px', margin: '20px 0'}}>
