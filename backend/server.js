@@ -115,7 +115,7 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
         console.log(`[And ${imageParts.length} images sent to Vision Engine]`);
         console.log("-------------------------------------\n");
         
-        if (combinedText.length < 50) {
+        if (combinedText.length < 50 && imageParts.length === 0)  {
             return res.status(400).json({ error: "The scrolls were empty or unreadable. Please try a different document." });
         }
 

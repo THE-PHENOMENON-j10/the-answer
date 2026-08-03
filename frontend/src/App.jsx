@@ -75,10 +75,28 @@ export default function TheAnswerApp() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const handleUpload = async () => {
-    if (files.length > 15) return alert("Maximum of 15 scrolls allowed.");
+const handleUpload = async (e) => {
+    // If triggered by a form submit, this prevents the page from reloading
+    if (e) e.preventDefault(); 
+
+    // 1. Basic Checks
     if (files.length === 0) return alert("Please select your files.");
+    if (files.length > 15) return alert("Maximum of 15 scrolls allowed.");
+
+    // 2. --- THE FILE SIZE BOUNCER ---
+    let totalSize = 0;
+    for (let i = 0; i < files.length; i++) {
+      totalSize += files[i].size;
+    }
     
+    // 10MB limit (10,485,760 bytes)
+    if (totalSize > 10485760) {
+      alert("These scrolls are too heavy! THE ANSWER can only process up to 10MB at a time. Please compress your files or upload fewer pages.");
+      return; // Instantly stops the upload!
+    }
+    // ----------------------------------
+
+    // 3. Prepare the Data
     setLoading(true);
     const formData = new FormData();
     files.forEach(f => formData.append('files', f));
@@ -86,6 +104,7 @@ export default function TheAnswerApp() {
     formData.append('numQuestions', config.count);
     formData.append('type', config.type);
 
+    // 4. Send to Render
     try {
       const res = await axios.post('https://the-answer.onrender.com/generate-quiz', formData);
       setQuizData(res.data);
