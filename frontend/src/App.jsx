@@ -388,9 +388,9 @@ const handleUpload = async (e) => {
       <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 100 }}>
         <button 
           onClick={() => setMenuOpen(!menuOpen)}
-          style={{ background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer' }}
+          style={{ background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer', padding: 0, lineHeight: 1 }}
         >
-          ☰
+          <span style={{ display: 'block', transform: 'translateY(-2px)' }}>☰</span>
         </button>
         
         {menuOpen && (
@@ -441,8 +441,6 @@ const handleUpload = async (e) => {
             </div>
           )}
 
-          {/* ... Your existing 3-column grid for Intensity, Format, and Duration stays exactly the same here ... */}
-          
           {/* Changed layout grid to 3 columns to handle the new selection elegantly */}
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px'}}>
              <div className="pro-input-group" style={{padding: '15px'}}>
@@ -479,6 +477,109 @@ const handleUpload = async (e) => {
           </button>
         </div>
       )}
+
+      {/* ========================================== */}
+      {/* 👇 NEW QUEST HISTORY & REVIEW UI BLOCK 👇 */}
+      {/* ========================================== */}
+      {questMode === 'History' && (
+        <div className="glass-card" style={{ marginTop: '60px', maxHeight: '80vh', overflowY: 'auto' }}>
+          
+          {selectedReview ? (
+            <div>
+              <button 
+                onClick={() => setSelectedReview(null)} 
+                style={{ background: 'transparent', color: '#00ffcc', border: '1px solid #00ffcc', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', marginBottom: '15px' }}
+              >
+                ← Back to Archives
+              </button>
+              <h2 className="mystic-title" style={{ fontSize: '1.2rem' }}>
+                REVIEW: {selectedReview.mode === 'GST212' ? 'GST212' : 'CUSTOM QUEST'} ({selectedReview.score}%)
+              </h2>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px', textAlign: 'left' }}>
+                {selectedReview.quizData.map((q, index) => {
+                  // Fixed: Matched to use your specific index-based answer storage
+                  const userPicked = selectedReview.userAnswers[index];
+                  const isCorrect = userPicked === q.answer;
+
+                  return (
+                    <div key={index} style={{ background: 'rgba(0,0,0,0.3)', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${isCorrect ? '#00ffcc' : '#ff4d4d'}` }}>
+                      <p style={{ fontWeight: 'bold', marginBottom: '10px' }}>{index + 1}. {q.question}</p>
+                      
+                      <div style={{ fontSize: '0.9rem', marginBottom: '5px' }}>
+                        <span style={{ opacity: 0.7 }}>Your Answer: </span>
+                        <span style={{ color: isCorrect ? '#00ffcc' : '#ff4d4d', fontWeight: 'bold' }}>
+                          {userPicked || "Skipped"}
+                        </span>
+                      </div>
+                      
+                      {!isCorrect && (
+                        <div style={{ fontSize: '0.9rem' }}>
+                          <span style={{ opacity: 0.7 }}>Correct Answer: </span>
+                          <span style={{ color: '#00ffcc', fontWeight: 'bold' }}>{q.answer}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h2 className="mystic-title" style={{ fontSize: '1.5rem' }}>ARCHIVE OF COMPLETED QUESTS</h2>
+              {(() => {
+                const history = JSON.parse(localStorage.getItem('quest_history')) || [];
+                
+                if (history.length === 0) {
+                  return (
+                    <p style={{ textAlign: 'center', opacity: 0.7, fontStyle: 'italic', padding: '20px' }}>
+                      No past trials found in your local scrolls yet...
+                    </p>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {history.map((item) => (
+                      <div 
+                        key={item.id} 
+                        onClick={() => setSelectedReview(item)}
+                        style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', cursor: 'pointer', transition: '0.2s' }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                      >
+                        <div style={{ textAlign: 'left' }}>
+                          <span style={{ fontWeight: 'bold', color: item.mode === 'GST212' ? '#ffd700' : '#fff' }}>
+                            {item.mode === 'GST212' ? '🎓 GST212 FAST-TRACK' : '🏆 CUSTOM QUEST'}
+                          </span>
+                          <div style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '4px' }}>{item.date}</div>
+                        </div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00ffcc' }}>
+                          {item.score}%
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <button 
+                      className="main-btn" 
+                      style={{ background: 'rgba(255, 77, 77, 0.2)', border: '1px solid #ff4d4d', color: '#ff4d4d', marginTop: '10px' }}
+                      onClick={() => {
+                        if(window.confirm("Are you sure you want to wipe all records from your local scrolls?")) {
+                          localStorage.removeItem('quest_history');
+                          setStep(2); 
+                        }
+                      }}
+                    >
+                      WIPE CHRONICLES
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+      {/* ========================================== */}
 
       {step === 3 && quizData && (
         <div className="glass-card" style={{maxWidth: '800px'}}>
