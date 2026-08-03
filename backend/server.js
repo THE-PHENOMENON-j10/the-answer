@@ -45,13 +45,37 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
 
         // 3. Extract text from uploaded files
         for (const file of req.files) {
-            if (file.mimetype === 'application/pdf') {
+            const mimeType = file.mimetype; // <-- Declared here so all conditions can use it safely
+
+            if (mimeType === 'application/pdf') {
+                // Handle PDFs (Hybrid Digital + Scanned Detection)
                 try {
                     const parsePDF = typeof pdfParse === 'function' ? pdfParse : pdfParse.default;
                     const data = await parsePDF(file.buffer);
-                    combinedText += data.text + "\n";
-                } catch (pdfErr) {
-                    console.error("Error reading PDF:", pdfErr);
+                    const extractedText = data.text ? data.text.trim() : "";
+
+                    // If pdf-parse found actual text, use it!
+                    if (extractedText.length >= 50) {
+                        combinedText += extractedText + "\n";
+                    } else {
+                        // SCANNED PDF DETECTED: Pass raw PDF directly to Gemini Vision
+                        console.log(`[PDF Scan Detected]: "${file.originalname}" has little/no text. Sending to Gemini Vision.`);
+                        imageParts.push({
+                            inlineData: {
+                                data: file.buffer.toString("base64"),
+                                mimeType: 'application/pdf'
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error reading PDF, falling back to Gemini Vision:", err);
+                    // Fallback on corrupt/unreadable PDF: pass directly to Gemini
+                    imageParts.push({
+                        inlineData: {
+                            data: file.buffer.toString("base64"),
+                            mimeType: 'application/pdf'
+                        }
+                    });
                 }
             } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                 // Handle Word Documents (.docx)
@@ -146,7 +170,7 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
             : `Do not include an 'options' field at all in the quiz objects. Provide only 'id', 'question', and 'answer'.`;
 
         const prompt = `
-        System: You are "THE ANSWER", an ancient, mystical source of infinite knowledge. 
+        System: You are "THE ANSWER", mystical source of infinite knowledge. 
         User: ${username} has provided scrolls of knowledge.
         
         Task: Generate exactly ${numQuestions} ${type} questions based STRICTLY AND ONLY on the Text Data provided below. 
@@ -167,8 +191,7 @@ app.post('/generate-quiz', upload.array('files'), async (req, res) => {
             ...imageParts
         ];
 
-        const result = await model.generateContent([prompt, `Text Data:\n${combinedText.substring(0, 100000)}`]);
-        
+        const result = await model.generateContent(payload);
         let responseText = result.response.text(); 
         
         // --- THE PURIFICATION STEP ---
