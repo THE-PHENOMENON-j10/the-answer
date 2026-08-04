@@ -387,29 +387,29 @@ export default function TheAnswerApp() {
       )}
 
       {/* --- TOP RIGHT CONTROLS FOR ACTIVE WORKSPACE --- */}
-      <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', alignItems: 'center', gap: '15px', zIndex: 100 }}>
-        <button 
-          className="main-btn"
-          onClick={() => {
-            if (questMode === 'History') {
-              setQuestMode('Custom');
-            } else {
-              setQuestMode(questMode === 'Custom' ? 'GST212' : 'Custom');
-            }
-          }}
-          style={{
-            background: questMode === 'GST212' ? 'linear-gradient(45deg, #ffd700, #ff8c00)' : 'rgba(255,255,255,0.1)',
-            color: questMode === 'GST212' ? 'black' : 'white',
-            border: '1px solid rgba(255,255,255,0.2)',
-            fontSize: '0.85rem',
-            fontWeight: 'bold',
-            padding: '8px 15px',
-            borderRadius: '20px'
-          }}
-        >
-          {questMode === 'GST212' ? '🎓 GST212 ACTIVE' : questMode === 'History' ? '📁 RETURN TO SETUP' : '📁 SWITCH TO GST212'}
-        </button>
-      </div>
+      <div style={{ position: 'absolute', top: '20px', right: '120px', display: 'flex', alignItems: 'center', gap: '15px', zIndex: 100 }}>
+  <button 
+    className="main-btn"
+    onClick={() => {
+      if (questMode === 'History') {
+        setQuestMode('Custom');
+      } else {
+        setQuestMode(questMode === 'Custom' ? 'GST212' : 'Custom');
+      }
+    }}
+    style={{
+      background: questMode === 'GST212' ? 'linear-gradient(45deg, #ffd700, #ff8c00)' : 'rgba(255,255,255,0.1)',
+      color: questMode === 'GST212' ? 'black' : 'white',
+      border: '1px solid rgba(255,255,255,0.2)',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+      padding: '8px 15px',
+      borderRadius: '20px'
+    }}
+  >
+    {questMode === 'GST212' ? '🎓 GST212 ACTIVE' : questMode === 'History' ? '📁 RETURN TO SETUP' : '📁 SWITCH TO GST212'}
+  </button>
+</div>
 
       {/* --- WORKSPACE STEPS --- */}
       {questMode !== 'History' && step === 1 && (
