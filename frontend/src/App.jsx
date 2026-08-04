@@ -398,13 +398,19 @@ export default function TheAnswerApp() {
       }
     }}
     style={{
-      background: questMode === 'GST212' ? 'linear-gradient(45deg, #ffd700, #ff8c00)' : 'rgba(255,255,255,0.1)',
-      color: questMode === 'GST212' ? 'black' : 'white',
-      border: '1px solid rgba(255,255,255,0.2)',
+      // Dynamically switches colors based on the theme state
+      background: questMode === 'GST212' 
+        ? 'linear-gradient(45deg, #ffd700, #ff8c00)' 
+        : (theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'),
+      color: questMode === 'GST212' 
+        ? 'black' 
+        : (theme === 'dark' ? 'white' : '#222'),
+      border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.15)',
       fontSize: '0.85rem',
       fontWeight: 'bold',
       padding: '8px 15px',
-      borderRadius: '20px'
+      borderRadius: '20px',
+      cursor: 'pointer',
     }}
   >
     {questMode === 'GST212' ? '🎓 GST212 ACTIVE' : questMode === 'History' ? '📁 RETURN TO SETUP' : '📁 SWITCH TO GST212'}
